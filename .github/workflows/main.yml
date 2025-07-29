@@ -1,0 +1,143 @@
+# .github/workflows/main.yml
+
+name: Node.js CI/CD and Security Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop # Triggers on push to develop for staging deployment
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ---------------------------------------------
+  # 1. Build, Test, and Scan
+  # ---------------------------------------------
+  build_test_and_scan:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha_short }}
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 18.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18.x"
+          cache: "npm"
+
+      - name: Install dependencies securely
+        run: npm ci
+
+      - name: Run automated tests
+        run: npm test
+
+      - name: Scan for dependency vulnerabilities with Snyk
+        uses: snyk/actions/node@master
+        env:
+          # Get this token from your Snyk account and add to GitHub Secrets
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: "monitor" # Pushes a snapshot to Snyk for continuous monitoring
+
+      - name: Set output variables
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Build and tag Docker image
+        id: build_image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          # Do not push yet, we'll push in a separate job
+          push: false
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+          load: true # Load the image into the runner's Docker daemon for scanning
+
+      - name: Scan container image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}"
+          format: "table"
+          exit-code: "1" # Fails the build if vulnerabilities are found
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      - name: Push Docker image to Docker Hub
+        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+
+  # ---------------------------------------------
+  # 2. Deploy to Staging Environment
+  # ---------------------------------------------
+  deploy_staging:
+    needs: build_test_and_scan
+    runs-on: ubuntu-latest
+    # This job runs only on pushes to the 'develop' branch
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            # Pull the new image from Docker Hub
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
+
+            # Stop and remove the old container if it exists
+            docker stop staging-app || true
+            docker rm staging-app || true
+
+            # Run the new container
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name staging-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
+
+  # ---------------------------------------------
+  # 3. Deploy to Production Environment with Manual Approval
+  # ---------------------------------------------
+  deploy_production:
+    needs: build_test_and_scan
+    runs-on: ubuntu-latest
+    # This job runs only on pushes to the 'main' branch
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production # This enables the manual approval step
+      url: ${{ secrets.PRODUCTION_URL }} # This URL will appear in the approval prompt
+
+    steps:
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            # Pull the new image from Docker Hub
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
+
+            # Stop and remove the old container if it exists
+            docker stop prod-app || true
+            docker rm prod-app || true
+
+            # Run the new container
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name prod-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
