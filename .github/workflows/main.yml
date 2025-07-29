@@ -110,7 +110,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: "${{ secrets.PRODUCTION_URL }}"
+      url: "{{ secrets.PRODUCTION_URL }}"
 
     steps:
       - name: Deploy to Production Server
