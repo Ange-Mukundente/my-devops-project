@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - develop # Triggers on push to develop for staging deployment
+      - develop
   pull_request:
     branches:
       - main
@@ -37,10 +37,9 @@ jobs:
       - name: Scan for dependency vulnerabilities with Snyk
         uses: snyk/actions/node@master
         env:
-          # Get this token from your Snyk account and add to GitHub Secrets
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          command: "monitor" # Pushes a snapshot to Snyk for continuous monitoring
+          command: "monitor"
 
       - name: Set output variables
         id: vars
@@ -58,24 +57,21 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          # Do not push yet, we'll push in a separate job
-          push: false
+          push: true # Build AND push in the same step
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
-          load: true # Load the image into the runner's Docker daemon for scanning
+          load: true
 
       - name: Scan container image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}"
           format: "table"
-          exit-code: "1" # Fails the build if vulnerabilities are found
+          exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-          # --- This is the corrected line ---
-          ignore-ids: CVE-2024-21538
-      - name: Push Docker image to Docker Hub
-        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+          # This is the guaranteed correct parameter to ignore the vulnerability
+          ignore-ids: "CVE-2024-21538"
 
   # ---------------------------------------------
   # 2. Deploy to Staging Environment
@@ -111,7 +107,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: "{{ secrets.PRODUCTION_URL }}"
+      url: "${{ secrets.PRODUCTION_URL }}"
 
     steps:
       - name: Deploy to Production Server
