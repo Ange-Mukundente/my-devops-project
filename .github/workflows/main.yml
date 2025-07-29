@@ -110,34 +110,34 @@ jobs:
               ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
 
   # ---------------------------------------------
-  # 3. Deploy to Production Environment with Manual Approval
-  # ---------------------------------------------
-  deploy_production:
-    needs: build_test_and_scan
-    runs-on: ubuntu-latest
-    # This job runs only on pushes to the 'main' branch
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production # This enables the manual approval step
-      # url: ${{ secrets.PRODUCTION_URL }} # This URL will appear in the approval prompt
+# 3. Deploy to Production Environment with Manual Approval
+# ---------------------------------------------
+deploy_production:
+  needs: build_test_and_scan
+  runs-on: ubuntu-latest
+  # This job runs only on pushes to the 'main' branch
+  if: github.ref == 'refs/heads/main'
+  environment:
+    name: production # This enables the manual approval step
+    url: "${{ secrets.PRODUCTION_URL }}" # This URL will appear in the approval prompt
 
-    steps:
-      - name: Deploy to Production Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.PRODUCTION_USERNAME }}
-          key: ${{ secrets.PRODUCTION_SSH_KEY }}
-          script: |
-            # Pull the new image from Docker Hub
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
+  steps:
+    - name: Deploy to Production Server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USERNAME }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          # Pull the new image from Docker Hub
+          docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
 
-            # Stop and remove the old container if it exists
-            docker stop prod-app || true
-            docker rm prod-app || true
+          # Stop and remove the old container if it exists
+          docker stop prod-app || true
+          docker rm prod-app || true
 
-            # Run the new container
-            docker run -d --restart always \
-              -p 80:3000 \
-              --name prod-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
+          # Run the new container
+          docker run -d --restart always \
+            -p 80:3000 \
+            --name prod-app \
+            ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_scan.outputs.image_tag }}
