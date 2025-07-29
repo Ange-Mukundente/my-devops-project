@@ -74,7 +74,6 @@ jobs:
           severity: "CRITICAL,HIGH"
           # --- This is the corrected line ---
           ignore-ids: CVE-2024-21538
-
       - name: Push Docker image to Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
 
