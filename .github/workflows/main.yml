@@ -70,8 +70,6 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
-          # This is the guaranteed correct parameter to ignore the vulnerability
-          ignore-ids: "CVE-2024-21538"
 
   # ---------------------------------------------
   # 2. Deploy to Staging Environment
