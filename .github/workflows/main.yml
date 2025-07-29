@@ -63,16 +63,16 @@ jobs:
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
           load: true # Load the image into the runner's Docker daemon for scanning
 
-      -       - name: Scan container image with Trivy
+      - name: Scan container image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}'
-          format: 'table'
-          exit-code: '1' # Fails the build if vulnerabilities are found
+          image-ref: "${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}"
+          format: "table"
+          exit-code: "1" # Fails the build if vulnerabilities are found
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          # --- THIS LINE IS TO IGNORE THE SPECIFIC CVE ---
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+          # --- This is the corrected line ---
           ignore-ids: CVE-2024-21538
 
       - name: Push Docker image to Docker Hub
